@@ -1,0 +1,12 @@
+{
+    "target_overrides": {
+        "NUCLEO_F439ZI": {
+            "target.features_add": [
+                "STORAGE"
+            ],
+            "target.components_add": [
+                "SD"
+            ]
+        }
+    }
+}
