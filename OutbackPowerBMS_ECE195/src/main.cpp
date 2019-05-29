@@ -23,7 +23,7 @@
 // Function prototypes
 void setupADC(SPI *);                   // Setup and initialize SPI communication for ADC
 void print_ADC_value(char *, int, int); // Console print hex values from ADC, for debugging
-void sendCAN(CAN *, float); // Send CAN messages
+void sendCAN(CAN *, char *); // Send CAN messages
 float extractFloat(char *); // Convert raw binary char values to floats
 float powerInst(float, float);
 
@@ -73,7 +73,7 @@ int main()
       }
 
       snprintf(can_message, 8, "%d%d%3.1f", channel, channel % 3, channel_value[channel]); // CH, TYP, VAL format for CAN string
-      sendCAN(&can1, *can_message);
+      sendCAN(&can1,  can_message);
       // move to function for threading
       // if (can1.write(CANMessage(12, can_message, 8)))
       // {
@@ -127,7 +127,7 @@ float powerInst(float voltage, float current)
   return instant_power;
 }
 
-void sendCAN(CAN *can1, float msg)
+void sendCAN(CAN *can1, char * msg)
 {
   if (can1->write(CANMessage(12, msg, 8)))
   {
