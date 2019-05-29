@@ -131,6 +131,6 @@ void sendCAN(CAN *can1, char * msg)
 {
   if (can1->write(CANMessage(12, msg, 8)))
   {
-    printf("%s\n", msg);
+    printf("%s\n", msg); //test
   }
 }
