@@ -23,7 +23,8 @@
 // Function prototypes
 void setupADC(SPI *);                   // Setup and initialize SPI communication for ADC
 void print_ADC_value(char *, int, int); // Console print hex values from ADC, for debugging
-float extractFloat(char *);             // Convert raw binary char values to floats
+void sendCAN(CAN *, float); // Send CAN messages
+float extractFloat(char *); // Convert raw binary char values to floats
 float powerInst(float, float);
 
 // Global object declarations
@@ -39,43 +40,45 @@ int main()
   char adc_response[RX_BUFFER_SIZE];
   float channel_value[NUM_CHANNELS];
   char can_message[8];
+  float instant_power = 0;
 
   //float *powerCalcs = NULL; // Create a dynamic array for power calculations
 
   while (1)
   {
     maximADC.lock();
-    for (int i = 0; i < NUM_CHANNELS; i++) // Iterate through each ADC Channel (0-8)
+    for (int channel = 0; channel < NUM_CHANNELS; channel++) // Iterate through each ADC Channel (0-8)
     {
       maximADC.write(&conv_req, 2, adc_response, RX_BUFFER_SIZE);
       float adc_value_f = (extractFloat(adc_response)) / 1000;
-      channel_value[i] = adc_value_f;
+      channel_value[channel] = adc_value_f;
 
       // weird debugging thing idk
       printf("%f", adc_value_f);
       printf("\n");
 
       // move to function for threading
-      if (i % 3 == 0) // Voltage measurements on CH 0, 3, 6
+      if (channel % 3 == 0) // Voltage measurements on CH 0, 3, 6
       {
-        channel_value[i] = 25.386f * channel_value[i] - 5.2756f; // Voltage formatting
+        channel_value[channel] = 25.386f * channel_value[channel] - 5.2756f; // Voltage formatting
       }
-      else if (i % 3 == 1) // Current measurements on CH 1, 4, 7
+      else if (channel % 3 == 1) // Current measurements on CH 1, 4, 7
       {
-        channel_value[i] = (channel_value[i] - 2.5039f) * 200; // Current formatting
+        channel_value[channel] = (channel_value[channel] - 2.5039f) * 200;             // Current formatting
+        instant_power = powerInst(channel_value[channel - 1], channel_value[channel]); // Calculate instantaneus power
       }
-      else if (i % 3 == 2) // Temperature measurements on CH 2, 5, 8
+      else if (channel % 3 == 2) // Temperature measurements on CH 2, 5, 8
       {
-        channel_value[i] = channel_value[i]; // Temperature formatting (change to lookup/dictionary)
+        channel_value[channel] = channel_value[channel]; // Temperature formatting (change to lookup/dictionary)
       }
 
-      snprintf(can_message, 8, "%d%d%3.1f", i, i % 3, channel_value[i]); // CH, TYP, VAL format for CAN string
-
+      snprintf(can_message, 8, "%d%d%3.1f", channel, channel % 3, channel_value[channel]); // CH, TYP, VAL format for CAN string
+      sendCAN(&can1, *can_message);
       // move to function for threading
-      if (can1.write(CANMessage(12, can_message, 8)))
-      {
-        printf("%s\n", can_message);
-      }
+      // if (can1.write(CANMessage(12, can_message, 8)))
+      // {
+      //   printf("%s\n", can_message);
+      // }
 
       conv_req += 0x08; // increment to next channel
     }
@@ -91,7 +94,7 @@ void setupADC(SPI *maximADC)
   maximADC->lock();
   maximADC->format(8, 0);       // 8-bit frame, pol = phase
   maximADC->frequency(1000000); // 1MHz clock frequency, looks unstable if lower?
-  
+
   // maximADC.write(0x10);        // Reset
   // maximADC.write(0x00);        // Buffer
 
@@ -124,10 +127,10 @@ float powerInst(float voltage, float current)
   return instant_power;
 }
 
-// void sendCAN(float)
-// {
-//   if (can1.write(CANMessage(12, can_message, 8)))
-//   {
-//     printf("%s\n", can_message);
-//   }
-// }
+void sendCAN(CAN *can1, float msg)
+{
+  if (can1->write(CANMessage(12, msg, 8)))
+  {
+    printf("%s\n", msg);
+  }
+}
