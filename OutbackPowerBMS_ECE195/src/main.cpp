@@ -26,7 +26,7 @@
 void setupADC(SPI *);                   // Setup and initialize SPI communication for ADC
 void print_ADC_value(char *, int, int); // Console print hex values from ADC, for debugging
 void sendCAN(CAN *, char *);            // Send CAN messages
-float formatData(float *, int);         // Format raw floats to voltage, current, temperature
+void formatData(float *, int);          // Format raw floats to voltage, current, temperature
 float extractFloat(char *);             // Convert raw binary char values to floats
 float powerInst(float, float);          // Calculate instantaneous power P = (V*I)
 
@@ -49,12 +49,12 @@ int main()
   // Declare char arrays for messages
   char conv_req = MESSAGE_INIT; // Set conversion request to 0x80 for channel 0
   char adc_response[RX_BUFFER_SIZE];
-  float channel_value[NUM_CHANNELS];
+  float ADC_meas[NUM_CHANNELS]; // Array of ADC measurements
   char can_message[8];
 
   float adc_value_f = 0.0f;
-  float instant_power = 0.0f;
-  int channel = 0;
+  // float instant_power = 0.0f;
+  int channelNum = 0;
   int battNum = 0;
 
   //float *powerCalcs = NULL; // Create a dynamic array for power calculations
@@ -62,47 +62,46 @@ int main()
   while (1)
   {
     maximADC.lock();
-    for (channel = 0; channel < NUM_CHANNELS; channel++) // Iterate through each ADC Channel (0-8)
+    for (channelNum = 0; channelNum < NUM_CHANNELS; channelNum++) // Iterate through each ADC Channel (0-8)
     {
       maximADC.write(&conv_req, 2, adc_response, RX_BUFFER_SIZE);
       adc_value_f = (extractFloat(adc_response)) / 1000;
-      channel_value[channel] = adc_value_f;
-      // instant_power = formatData(channel_value, channel);
+      ADC_meas[channelNum] = adc_value_f;
+      formatData(ADC_meas, channelNum);
 
-      // // weird debugging thing idk
-      // printf("%f", adc_value_f);
-      // printf("\n");
-
-      // move to function for threading
-      if (channel % 3 == VOLTAGE_MEAS) // Voltage measurements on CH 0, 3, 6
+      switch (channelNum)
       {
-        channel_value[channel] = 25.386f * channel_value[channel] - 5.2756f; // Voltage formatting
-      }
-      else if (channel % 3 == CURRENT_MEAS) // Current measurements on CH 1, 4, 7
-      {
-        channel_value[channel] = (channel_value[channel] - 2.5039f) * 200;             // Current formatting
-        instant_power = powerInst(channel_value[channel - 1], channel_value[channel]); // Calculate instantaneus power
-      }
-      else if (channel % 3 == TEMP_MEAS) // Temperature measurements on CH 2, 5, 8
-      {
-        channel_value[channel] = channel_value[channel]; // Temperature formatting (change to lookup/dictionary)
-      }
-
-      // Set Battery Number (battNum)
-      if (channel <= 2)
-      {
-        battNum = 1;
-      }
-      else if (channel > 2 && channel <= 5)
-      {
-        battNum = 2;
-      }
-      else if (channel > 5)
-      {
-        battNum = 3;
+      case 0:
+        BAT_1.setVoltage(ADC_meas[channelNum]);
+        break;
+      case 1:
+        BAT_1.setCurrent(ADC_meas[channelNum]);
+        break;
+      case 2:
+        BAT_1.setTemp(ADC_meas[channelNum]);
+        break;
+      case 3:
+        BAT_2.setVoltage(ADC_meas[channelNum]);
+        break;
+      case 4:
+        BAT_2.setCurrent(ADC_meas[channelNum]);
+        break;
+      case 5:
+        BAT_2.setTemp(ADC_meas[channelNum]);
+        break;
+      case 6:
+        BAT_3.setVoltage(ADC_meas[channelNum]);
+        break;
+      case 7:
+        BAT_3.setCurrent(ADC_meas[channelNum]);
+        break;
+      case 8:
+        BAT_3.setTemp(ADC_meas[channelNum]);
+        break;
       }
 
-      snprintf(can_message, 8, "%d%d%3.1f", battNum, channel % 3, channel_value[channel]); // CH, TYP, VAL format for CAN string
+      
+      snprintf(can_message, 8, "%d%d%3.1f", battNum, channelNum % 3, ADC_meas[channelNum]); // CH, TYP, VAL format for CAN string
       sendCAN(&can1, can_message);
 
       conv_req += 0x08; // increment to next channel
@@ -163,7 +162,7 @@ void sendCAN(CAN *can1, char *msg)
 }
 
 // Format data and return instantaneous power
-float formatData(float *channelData, int channelNum)
+void formatData(float *channelData, int channelNum)
 {
   float instant_power = 0.0f;
   if (channelNum % 3 == VOLTAGE_MEAS) // Voltage measurements on CH 0, 3, 6
@@ -172,12 +171,10 @@ float formatData(float *channelData, int channelNum)
   }
   else if (channelNum % 3 == CURRENT_MEAS) // Current measurements on CH 1, 4, 7
   {
-    channelData[channelNum] = (channelData[channelNum] - 2.5039f) * 200;             // Current formatting
-    instant_power = powerInst(channelData[channelNum - 1], channelData[channelNum]); // Calculate instantaneus power
+    channelData[channelNum] = (channelData[channelNum] - 2.5039f) * 200; // Current formatting
   }
   else if (channelNum % 3 == TEMP_MEAS) // Temperature measurements on CH 2, 5, 8
   {
     channelData[channelNum] = channelData[channelNum]; // Temperature formatting (change to lookup/dictionary)
   }
-  return instant_power;
 }

@@ -54,6 +54,7 @@ float Battery::getTemp()
 }
 float Battery::getPower()
 {
+    power = voltage * current;
     return power;
 }
 uint16_t Battery::getBattNum()
