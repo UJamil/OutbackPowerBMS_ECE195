@@ -1,6 +1,7 @@
 /*
     Filename: main.cpp
-    Author: Usman J.
+    Author: Usman Jamil
+    Collaborators: Abdulaziz Alrakaf
     Purpose: Firmware for Battery Monitoring System,
         designed and developed for Outback Power
     Description:
@@ -11,6 +12,7 @@
 // Libraries
 #include <mbed.h>
 #include <SDBlockDevice.h>
+#include "Battery.h"
 
 // Definitions
 #define NUM_CHANNELS 9
@@ -26,69 +28,18 @@ void print_ADC_value(char *, int, int); // Console print hex values from ADC, fo
 void sendCAN(CAN *, char *);            // Send CAN messages
 float formatData(float *, int);         // Format raw floats to voltage, current, temperature
 float extractFloat(char *);             // Convert raw binary char values to floats
-float powerInst(float, float);
+float powerInst(float, float);          // Calculate instantaneous power P = (V*I)
 
 float dailyPower[24];
 float hourlyPower[60];
 float minutePower[60];
 float secondPower[10000];
 
-class Battery
-{
-public:
-  // Set Methods
-  void setVoltage(float V)
-  {
-    voltage = V;
-  }
-  void setCurrent(float C)
-  {
-    current = C;
-  }
-  void setTemp(float T)
-  {
-    temperature = T;
-  }
-  void setPower(float P)
-  {
-    power = P;
-  }
-  void setBattNum(uint16_t battNum)
-  {
-    batteryNumber = battNum;
-  }
-  // Get Methods
-  float getVoltage()
-  {
-    return voltage;
-  }
-  float getCurrent()
-  {
-    return current;
-  }
-  float getTemp()
-  {
-    return temperature;
-  }
-  float getPower()
-  {
-    return power;
-  }
-  uint16_t getBattNum()
-  {
-    return batteryNumber;
-  }
-
-private:
-  float voltage, current, temperature, power;
-  uint16_t batteryNumber;
-};
-
 // Global object declarations
 SPI maximADC(PA_7, PA_6, PA_5, PA_4);       // SPI1_MOSI, SPI1_MISO, SPI1_SCLK, SPI1_SSEL
 SDBlockDevice sd(PB_7, PC_2, PB_13, PB_12); // SPI2_MOSI, SPI2_MISO, SPI2_SCLK, SPI2_SSEL
 CAN can1(PD_0, PD_1);                       // CAN1_RD, CAN1_TD
-Battery BAT_1, BAT_2, BAT_3;
+Battery BAT_1(1), BAT_2(2), BAT_3(3);
 
 int main()
 {
@@ -116,7 +67,7 @@ int main()
       maximADC.write(&conv_req, 2, adc_response, RX_BUFFER_SIZE);
       adc_value_f = (extractFloat(adc_response)) / 1000;
       channel_value[channel] = adc_value_f;
-      // instantaneousPower = formatData(channel_value, channel);
+      // instant_power = formatData(channel_value, channel);
 
       // // weird debugging thing idk
       // printf("%f", adc_value_f);
