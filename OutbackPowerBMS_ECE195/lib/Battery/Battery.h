@@ -32,6 +32,7 @@ private:
         temperature,
         power;
     uint16_t batteryNumber;
+    
 };
 
 #endif

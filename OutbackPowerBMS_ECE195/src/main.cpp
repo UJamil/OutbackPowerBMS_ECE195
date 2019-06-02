@@ -21,41 +21,42 @@
 #define VOLTAGE_MEAS 0
 #define CURRENT_MEAS 1
 #define TEMP_MEAS 2
+#define INST_POWER 3
 
 // Function prototypes
 void setupADC(SPI *);                   // Setup and initialize SPI communication for ADC
 void print_ADC_value(char *, int, int); // Console print hex values from ADC, for debugging
-void sendCAN(CAN *, char *);            // Send CAN messages
+void sendCAN(CAN *, Battery *);         // Send CAN messages
 void formatData(float *, int);          // Format raw floats to voltage, current, temperature
 float extractFloat(char *);             // Convert raw binary char values to floats
-float powerInst(float, float);          // Calculate instantaneous power P = (V*I)
 
-float dailyPower[24];
-float hourlyPower[60];
-float minutePower[60];
-float secondPower[10000];
+// float dailyPower[24];
+// float hourlyPower[60];
+// float minutePower[60];
+// float secondPower[10000];
 
 // Global object declarations
 SPI maximADC(PA_7, PA_6, PA_5, PA_4);       // SPI1_MOSI, SPI1_MISO, SPI1_SCLK, SPI1_SSEL
 SDBlockDevice sd(PB_7, PC_2, PB_13, PB_12); // SPI2_MOSI, SPI2_MISO, SPI2_SCLK, SPI2_SSEL
 CAN can1(PD_0, PD_1);                       // CAN1_RD, CAN1_TD
-Battery BAT_1(1), BAT_2(2), BAT_3(3);
+Battery BAT_1(1), BAT_2(2), BAT_3(3);       // Battery objects
+
+Battery Batteries[3] = {BAT_1, BAT_2, BAT_3};
 
 int main()
 {
   // Setup
   setupADC(&maximADC);
 
-  // Declare char arrays for messages
-  char conv_req = MESSAGE_INIT; // Set conversion request to 0x80 for channel 0
-  char adc_response[RX_BUFFER_SIZE];
-  float ADC_meas[NUM_CHANNELS]; // Array of ADC measurements
-  char can_message[8];
+  // Declare char arrays
+  char adc_response[RX_BUFFER_SIZE]; // SPI Read Buffer
+  float ADC_meas[NUM_CHANNELS];      // Array of ADC measurements
 
+  // Initialize variables
+  char conv_req = MESSAGE_INIT; // Set conversion request to 0x80 for channel 0
   float adc_value_f = 0.0f;
-  // float instant_power = 0.0f;
   int channelNum = 0;
-  int battNum = 0;
+  int battIndex = 0;
 
   //float *powerCalcs = NULL; // Create a dynamic array for power calculations
 
@@ -100,14 +101,15 @@ int main()
         break;
       }
 
-      
-      snprintf(can_message, 8, "%d%d%3.1f", battNum, channelNum % 3, ADC_meas[channelNum]); // CH, TYP, VAL format for CAN string
-      sendCAN(&can1, can_message);
-
       conv_req += 0x08; // increment to next channel
     }
-
     maximADC.unlock();
+
+    for (battIndex = 0; battIndex <= 2; battIndex++)
+    {
+      sendCAN(&can1, &Batteries[battIndex]);
+    }
+
     conv_req = MESSAGE_INIT; // Reset to channel 0
     wait_ms(1000);
   }
@@ -115,20 +117,19 @@ int main()
 
 void setupADC(SPI *maximADC)
 {
+  // Setup ADC registers over SPI
   maximADC->lock();
+
   maximADC->format(8, 0);       // 8-bit frame, pol = phase
   maximADC->frequency(1000000); // 1MHz clock frequency, looks unstable if lower?
+  maximADC->write(0x76);        // select setup register, external timing (CNVST), internal reference off (external single ended 5V), unipolar setup
+  maximADC->write(0x00);        // set all ADC channels to unipolar single-ended
 
-  // maximADC.write(0x10);        // Reset
-  // maximADC.write(0x00);        // Buffer
-
-  maximADC->write(0x76); // select setup register, external timing (CNVST), internal reference off (external single ended 5V), unipolar setup
-  maximADC->write(0x00); // set all ADC channels to unipolar single-ended
   maximADC->unlock();
 }
 
-// Print voltage values
-void print_ADC_value(char *adc_response, int size, int ch) // for debugging, print hex values
+// Print voltage values (for debugging)
+void print_ADC_value(char *adc_response, int size, int ch)
 {
   printf("ch%d: ", ch);
   for (int i = 0; i < size; i++)
@@ -145,26 +146,33 @@ float extractFloat(char *input)
   return adc_value_f;
 }
 
-// Calculate Instantaneous Power
-float powerInst(float voltage, float current)
-{
-  float instant_power = voltage * current;
-  return instant_power;
-}
-
 // Send CAN messages
-void sendCAN(CAN *can1, char *msg)
+void sendCAN(CAN *can1, Battery *bat)
 {
-  if (can1->write(CANMessage(12, msg, 8)))
-  {
-    printf("%s\n", msg);
-  }
+  char can_message[8];
+
+  // BAT[1], TYP[1], VAL[6] format for CAN string of [8] bytes
+
+  snprintf(can_message, 8, "%d%d%3.1f", bat->getBattNum(), VOLTAGE_MEAS, bat->getVoltage()); // Send Voltage
+  can1->write(CANMessage(12, can_message, 8));
+  wait_ms(20);
+
+  snprintf(can_message, 8, "%d%d%3.1f", bat->getBattNum(), CURRENT_MEAS, bat->getCurrent()); // Send Current
+  can1->write(CANMessage(12, can_message, 8));
+  wait_ms(20);
+
+  snprintf(can_message, 8, "%d%d%3.1f", bat->getBattNum(), TEMP_MEAS, bat->getTemp()); // Send Temperature
+  can1->write(CANMessage(12, can_message, 8));
+  wait_ms(20);
+
+  snprintf(can_message, 8, "%d%d%3.1f", bat->getBattNum(), INST_POWER, bat->getPower()); // Send Power
+  can1->write(CANMessage(12, can_message, 8));
+  wait_ms(20);
 }
 
-// Format data and return instantaneous power
+// Format data
 void formatData(float *channelData, int channelNum)
 {
-  float instant_power = 0.0f;
   if (channelNum % 3 == VOLTAGE_MEAS) // Voltage measurements on CH 0, 3, 6
   {
     channelData[channelNum] = 25.386f * channelData[channelNum] - 5.2756f; // Voltage formatting
