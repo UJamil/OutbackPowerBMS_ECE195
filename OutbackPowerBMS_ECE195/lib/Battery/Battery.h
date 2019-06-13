@@ -12,7 +12,6 @@ public:
     void setVoltage(float);
     void setCurrent(float);
     void setTemp(float);
-    void setPower(float);
     void setBattNum(uint16_t);
 
     // Get Methods

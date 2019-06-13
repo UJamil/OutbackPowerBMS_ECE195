@@ -22,6 +22,7 @@
 #define CURRENT_MEAS 1
 #define TEMP_MEAS 2
 #define INST_POWER 3
+#define ADC_MULTIPLIER 1.2f // 5V ref / 2^12 bits = 5V /4096 ~= 1.2mV
 
 // Function prototypes
 void setupADC(SPI *);                   // Setup and initialize SPI communication for ADC
@@ -30,16 +31,13 @@ void sendCAN(CAN *, Battery *);         // Send CAN messages
 void formatData(float *, int);          // Format raw floats to voltage, current, temperature
 float extractFloat(char *);             // Convert raw binary char values to floats
 
-// float dailyPower[24];
-// float hourlyPower[60];
-// float minutePower[60];
-// float secondPower[10000];
-
 // Global object declarations
 SPI maximADC(PA_7, PA_6, PA_5, PA_4);       // SPI1_MOSI, SPI1_MISO, SPI1_SCLK, SPI1_SSEL
 SDBlockDevice sd(PB_7, PC_2, PB_13, PB_12); // SPI2_MOSI, SPI2_MISO, SPI2_SCLK, SPI2_SSEL
 CAN can1(PD_0, PD_1);                       // CAN1_RD, CAN1_TD
 Battery BAT_1(1), BAT_2(2), BAT_3(3);       // Battery objects
+
+Serial pc(USBTX, USBRX, "debug", 115200);
 
 Battery Batteries[3] = {BAT_1, BAT_2, BAT_3};
 
@@ -73,31 +71,31 @@ int main()
       switch (channelNum)
       {
       case 0:
-        BAT_1.setVoltage(ADC_meas[channelNum]);
+        Batteries[0].setVoltage(ADC_meas[channelNum]);
         break;
       case 1:
-        BAT_1.setCurrent(ADC_meas[channelNum]);
+        Batteries[0].setCurrent(ADC_meas[channelNum]);
         break;
       case 2:
-        BAT_1.setTemp(ADC_meas[channelNum]);
+        Batteries[0].setTemp(ADC_meas[channelNum]);
         break;
       case 3:
-        BAT_2.setVoltage(ADC_meas[channelNum]);
+        Batteries[1].setVoltage(ADC_meas[channelNum]);
         break;
       case 4:
-        BAT_2.setCurrent(ADC_meas[channelNum]);
+        Batteries[1].setCurrent(ADC_meas[channelNum]);
         break;
       case 5:
-        BAT_2.setTemp(ADC_meas[channelNum]);
+        Batteries[1].setTemp(ADC_meas[channelNum]);
         break;
       case 6:
-        BAT_3.setVoltage(ADC_meas[channelNum]);
+        Batteries[2].setVoltage(ADC_meas[channelNum]);
         break;
       case 7:
-        BAT_3.setCurrent(ADC_meas[channelNum]);
+        Batteries[2].setCurrent(ADC_meas[channelNum]);
         break;
       case 8:
-        BAT_3.setTemp(ADC_meas[channelNum]);
+        Batteries[2].setTemp(ADC_meas[channelNum]);
         break;
       }
 
@@ -105,13 +103,15 @@ int main()
     }
     maximADC.unlock();
 
+    // printf("%3.1f", BAT_1.getVoltage());
+
     for (battIndex = 0; battIndex <= 2; battIndex++)
     {
       sendCAN(&can1, &Batteries[battIndex]);
     }
 
     conv_req = MESSAGE_INIT; // Reset to channel 0
-    wait_ms(1000);
+    wait_ms(100);
   }
 }
 
@@ -142,7 +142,7 @@ void print_ADC_value(char *adc_response, int size, int ch)
 float extractFloat(char *input)
 {
   uint16_t adc_value = ((char)input[2] + ((char)input[1] << 8));
-  float adc_value_f = 1.2f * adc_value;
+  float adc_value_f = ADC_MULTIPLIER * adc_value; 
   return adc_value_f;
 }
 
@@ -154,6 +154,7 @@ void sendCAN(CAN *can1, Battery *bat)
   // BAT[1], TYP[1], VAL[6] format for CAN string of [8] bytes
 
   snprintf(can_message, 8, "%d%d%3.1f", bat->getBattNum(), VOLTAGE_MEAS, bat->getVoltage()); // Send Voltage
+  printf(can_message);
   can1->write(CANMessage(12, can_message, 8));
   wait_ms(20);
 

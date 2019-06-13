@@ -31,10 +31,6 @@ void Battery::setTemp(float T)
 {
     temperature = T;
 }
-void Battery::setPower(float P)
-{
-    power = P;
-}
 void Battery::setBattNum(uint16_t battNum)
 {
     batteryNumber = battNum;
