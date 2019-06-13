@@ -39,7 +39,7 @@ To transmit the data to other devices, the CAN bus was setup using the mbed CAN 
  
 ## Development Notes
 
-The firmware for the project is hosted here on this GitHub private repository: 
+The firmware for the project is hosted here on this GitHub private repository: https://github.com/UJamil/OutbackPowerBMS_ECE195
 
 ### Development Environment
 
